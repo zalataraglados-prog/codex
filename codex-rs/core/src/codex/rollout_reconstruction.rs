@@ -53,11 +53,19 @@ fn finalize_active_segment<'a>(
     );
 }
 
+/// Merge one surviving replay segment's turn-context bookkeeping into the aggregate
+/// `reference_turn_context_state` we are reconstructing for the newest surviving history tail.
+///
+/// `segment_turn_context_state` is the per-segment state collected while replaying one reverse
+/// segment. `reference_turn_context_state` is the cross-segment accumulator for the surviving
+/// transcript after rollback has skipped newer user turns.
 fn merge_surviving_segment_turn_context_state(
     reference_turn_context_state: &mut ReferenceTurnContextState,
     segment_turn_context_state: ReferenceTurnContextState,
     counts_as_user_turn: bool,
 ) {
+    // Only real user turns should backfill "previous turn settings". Standalone task turns may
+    // carry lifecycle events, but they must not become the latest real turn context.
     if counts_as_user_turn
         && reference_turn_context_state
             .latest_turn_context_item()
@@ -67,6 +75,8 @@ fn merge_surviving_segment_turn_context_state(
         reference_turn_context_state.set_latest_turn_context_item(Some(turn_context_item));
     }
 
+    // A compaction seen in this segment hides older reference baselines, but it must not erase a
+    // newer stored reference baseline we already captured from a later surviving user turn.
     if segment_turn_context_state.compacted_since_model_saw_reference_turn_context()
         && reference_turn_context_state
             .stored_reference_turn_context_item()
@@ -75,6 +85,8 @@ fn merge_surviving_segment_turn_context_state(
         reference_turn_context_state.note_compaction();
     }
 
+    // The model-visible reference baseline comes from the newest surviving user turn that both
+    // carries a stored baseline and has not been hidden by a later surviving compaction.
     if counts_as_user_turn
         && !reference_turn_context_state.compacted_since_model_saw_reference_turn_context()
         && reference_turn_context_state
