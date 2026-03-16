@@ -675,6 +675,110 @@ async fn reconstruct_history_rollback_clears_history_and_metadata_when_exceeding
 }
 
 #[tokio::test]
+async fn reconstruct_history_compaction_before_non_user_turn_does_not_clear_newer_reference_context_item()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    let mut current_context_item = turn_context.to_turn_context_item();
+    current_context_item.turn_id = Some("current-user-turn".to_string());
+    current_context_item.model = "current-rollout-model".to_string();
+    let current_turn_id = current_context_item
+        .turn_id
+        .clone()
+        .expect("turn context should have turn_id");
+    let standalone_turn_id = "standalone-task-turn".to_string();
+    let standalone_assistant = assistant_message("standalone task");
+    let current_turn_user = user_message("current user");
+    let current_turn_assistant = assistant_message("current assistant");
+
+    let rollout_items = vec![
+        RolloutItem::Compacted(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(Vec::new()),
+        }),
+        RolloutItem::EventMsg(EventMsg::TurnStarted(
+            codex_protocol::protocol::TurnStartedEvent {
+                turn_id: standalone_turn_id.clone(),
+                model_context_window: Some(128_000),
+                collaboration_mode_kind: ModeKind::Default,
+            },
+        )),
+        RolloutItem::ResponseItem(standalone_assistant.clone()),
+        RolloutItem::EventMsg(EventMsg::TurnComplete(
+            codex_protocol::protocol::TurnCompleteEvent {
+                turn_id: standalone_turn_id,
+                last_agent_message: None,
+            },
+        )),
+        RolloutItem::EventMsg(EventMsg::TurnStarted(
+            codex_protocol::protocol::TurnStartedEvent {
+                turn_id: current_turn_id.clone(),
+                model_context_window: Some(128_000),
+                collaboration_mode_kind: ModeKind::Default,
+            },
+        )),
+        RolloutItem::EventMsg(EventMsg::UserMessage(
+            codex_protocol::protocol::UserMessageEvent {
+                message: "current user".to_string(),
+                images: None,
+                local_images: Vec::new(),
+                text_elements: Vec::new(),
+            },
+        )),
+        RolloutItem::TurnContext(current_context_item.clone()),
+        RolloutItem::ResponseItem(current_turn_user.clone()),
+        RolloutItem::ResponseItem(current_turn_assistant.clone()),
+        RolloutItem::EventMsg(EventMsg::TurnComplete(
+            codex_protocol::protocol::TurnCompleteEvent {
+                turn_id: current_turn_id,
+                last_agent_message: None,
+            },
+        )),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(
+        reconstructed.history,
+        vec![
+            standalone_assistant,
+            current_turn_user,
+            current_turn_assistant,
+        ]
+    );
+    assert_eq!(
+        reconstructed
+            .reference_turn_context_state
+            .previous_turn_settings(),
+        Some(PreviousTurnSettings {
+            model: "current-rollout-model".to_string(),
+            realtime_active: Some(turn_context.realtime_active),
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(
+            reconstructed
+                .reference_turn_context_state
+                .reference_context_item(),
+        )
+        .expect("serialize reconstructed reference context item"),
+        serde_json::to_value(Some(current_context_item.clone()))
+            .expect("serialize expected reference context item")
+    );
+    assert_eq!(
+        serde_json::to_value(
+            reconstructed
+                .reference_turn_context_state
+                .latest_turn_context_item()
+        )
+        .expect("serialize reconstructed latest turn context item"),
+        serde_json::to_value(Some(current_context_item))
+            .expect("serialize expected latest turn context item")
+    );
+}
+
+#[tokio::test]
 async fn record_initial_history_resumed_rollback_skips_only_user_turns() {
     let (session, turn_context) = make_session_and_context().await;
     let previous_context_item = turn_context.to_turn_context_item();

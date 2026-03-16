@@ -58,10 +58,6 @@ fn merge_surviving_segment_turn_context_state(
     segment_turn_context_state: ReferenceTurnContextState,
     counts_as_user_turn: bool,
 ) {
-    if segment_turn_context_state.compacted_since_model_saw_reference_turn_context() {
-        reference_turn_context_state.note_compaction();
-    }
-
     if counts_as_user_turn
         && reference_turn_context_state
             .latest_turn_context_item()
@@ -69,6 +65,14 @@ fn merge_surviving_segment_turn_context_state(
         && let Some(turn_context_item) = segment_turn_context_state.latest_turn_context_item()
     {
         reference_turn_context_state.set_latest_turn_context_item(Some(turn_context_item));
+    }
+
+    if segment_turn_context_state.compacted_since_model_saw_reference_turn_context()
+        && reference_turn_context_state
+            .stored_reference_turn_context_item()
+            .is_none()
+    {
+        reference_turn_context_state.note_compaction();
     }
 
     if counts_as_user_turn
