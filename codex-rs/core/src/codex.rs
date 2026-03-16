@@ -423,7 +423,7 @@ impl Codex {
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
 
-        let loaded_plugins = plugins_manager.plugins_for_config(&config);
+        let _loaded_plugins = plugins_manager.plugins_for_config(&config);
         let loaded_skills = skills_manager.skills_for_config(&config);
 
         for err in &loaded_skills.errors {
@@ -469,14 +469,7 @@ impl Codex {
             config.startup_warnings.push(message);
         }
 
-        let allowed_skills_for_implicit_invocation =
-            loaded_skills.allowed_skills_for_implicit_invocation();
-        let user_instructions = get_user_instructions(
-            &config,
-            Some(&allowed_skills_for_implicit_invocation),
-            Some(loaded_plugins.capability_summaries()),
-        )
-        .await;
+        let user_instructions = get_user_instructions(&config).await;
 
         let exec_policy = if crate::guardian::is_guardian_subagent_source(&session_source) {
             // Guardian review should rely on the built-in shell safety checks,
@@ -2075,7 +2068,7 @@ impl Session {
             InitialHistory::New => {
                 // Defer initial context insertion until the first real turn starts so
                 // turn/start overrides can be merged before we write model-visible context.
-                self.reset_tracked_turn_context().await;
+                self.reset_reference_turn_context_state().await;
             }
             InitialHistory::Resumed(resumed_history) => {
                 let rollout_items = resumed_history.history;
@@ -2161,9 +2154,9 @@ impl Session {
             .reconstruct_history_from_rollout(turn_context, rollout_items)
             .await;
         let mut state = self.state.lock().await;
-        state.replace_history_with_tracked_turn_context(
+        state.replace_history_with_reference_turn_context_state(
             reconstructed_rollout.history,
-            reconstructed_rollout.tracked_turn_context,
+            reconstructed_rollout.reference_turn_context_state,
         );
     }
 
@@ -2185,9 +2178,9 @@ impl Session {
         state.set_latest_turn_context_item(item);
     }
 
-    pub(crate) async fn reset_tracked_turn_context(&self) {
+    pub(crate) async fn reset_reference_turn_context_state(&self) {
         let mut state = self.state.lock().await;
-        state.reset_tracked_turn_context();
+        state.reset_reference_turn_context_state();
     }
 
     async fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {

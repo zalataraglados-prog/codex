@@ -9,7 +9,7 @@ use tokio::task::JoinHandle;
 use crate::codex::PreviousTurnSettings;
 use crate::codex::SessionConfiguration;
 use crate::context_manager::ContextManager;
-use crate::context_manager::TrackedTurnContext;
+use crate::context_manager::ReferenceTurnContextState;
 use crate::error::Result as CodexResult;
 use crate::protocol::RateLimitSnapshot;
 use crate::protocol::TokenUsage;
@@ -79,17 +79,18 @@ impl SessionState {
             .set_reference_context_item(reference_context_item);
     }
 
-    pub(crate) fn replace_history_with_tracked_turn_context(
+    pub(crate) fn replace_history_with_reference_turn_context_state(
         &mut self,
         items: Vec<ResponseItem>,
-        tracked_turn_context: TrackedTurnContext,
+        reference_turn_context_state: ReferenceTurnContextState,
     ) {
         self.history.replace(items);
-        self.history.set_tracked_turn_context(tracked_turn_context);
+        self.history
+            .set_reference_turn_context_state(reference_turn_context_state);
     }
 
-    pub(crate) fn reset_tracked_turn_context(&mut self) {
-        self.history.reset_tracked_turn_context();
+    pub(crate) fn reset_reference_turn_context_state(&mut self) {
+        self.history.reset_reference_turn_context_state();
     }
 
     pub(crate) fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {
